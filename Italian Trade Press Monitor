@@ -1,0 +1,330 @@
+{
+  "name": "Tool 2 — Italian Trade Press Monitor",
+  "nodes": [
+    {
+      "id": "daily-trigger",
+      "name": "Daily 8am Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [0, 400],
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyDay",
+              "hour": 8,
+              "minute": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "rss-mondomobilio",
+      "name": "Fetch Mondomobilio",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [300, 50],
+      "parameters": {
+        "url": "https://www.mondomobilio.com/feed/"
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "rss-archiproducts",
+      "name": "Fetch Archiproducts",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [300, 250],
+      "parameters": {
+        "url": "https://www.archiproducts.com/en/rss"
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "rss-fld",
+      "name": "Fetch Furniture Lighting Decor",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [300, 450],
+      "parameters": {
+        "url": "https://www.furniture-lighting-decor.com/feed/"
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "rss-gnews-it",
+      "name": "Fetch Google News IT (Brands)",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [300, 650],
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=Natuzzi+OR+Calia+OR+Nicoletti+OR+%22Max+Divani%22+OR+Gorini+OR+%22Ego+Italiano%22+OR+%22Franco+Ferri%22+OR+%22Doimo+Salotti%22+OR+%22Diva+Divani%22+OR+Innova+Imbottiti&hl=it&gl=IT&ceid=IT:it"
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "rss-gnews-en",
+      "name": "Fetch Google News EN (Sofa)",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [300, 850],
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=italian+sofa+furniture+2026+OR+%22salone+del+mobile%22&hl=en&gl=IT&ceid=IT:en"
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "merge-1",
+      "name": "Merge 1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [600, 150],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "merge-2",
+      "name": "Merge 2",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [800, 300],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "merge-3",
+      "name": "Merge 3",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1000, 450],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "merge-4",
+      "name": "Merge 4",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1200, 550],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "filter-relevance",
+      "name": "Filtrar por Relevancia Sofas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 550],
+      "parameters": {
+        "jsCode": "try {\n  // All 11 target brands — any mention passes the filter regardless of context\n  const brands = [\n    'natuzzi', 'max divani', 'estro milano', 'innova imbottiti',\n    'franco ferri', 'nicoletti', 'calia italia', 'ego italiano',\n    'gorini', 'doimo salotti', 'diva divani'\n  ];\n\n  // General sofa/upholstery trade terms\n  const sofaTerms = [\n    'sofa', 'divano', 'divani', 'sofa', 'canape',\n    'upholstery', 'imbottito', 'imbottiti', 'poltrona',\n    'seduta imbottita', 'collezione divani', 'salone del mobile',\n    'isaloni', 'arredamento imbottito', 'mobili imbottiti'\n  ];\n\n  const allKeywords = [...brands, ...sofaTerms];\n\n  const items = $input.all();\n  const seen = new Set();\n  const matched = [];\n\n  for (const item of items) {\n    const j = item.json;\n    const link = (j.link || j.url || '').trim();\n\n    // Deduplicate by URL\n    if (link && seen.has(link)) continue;\n    if (link) seen.add(link);\n\n    const text = [\n      j.title,\n      j.contentSnippet,\n      j.content,\n      j.description,\n      j.summary\n    ].filter(Boolean).join(' ').toLowerCase();\n\n    const matchedKw = allKeywords.find(kw => text.includes(kw));\n    if (matchedKw) {\n      matched.push({\n        title: j.title || 'Sans titre',\n        link: link,\n        pubDate: j.pubDate || j.isoDate || '',\n        snippet: (j.contentSnippet || j.description || j.summary || '').slice(0, 400),\n        source: j.feedTitle || '',\n        matched_keyword: matchedKw\n      });\n    }\n  }\n\n  return [{\n    json: {\n      articles: matched,\n      articles_count: matched.length,\n      run_date: new Date().toISOString().split('T')[0]\n    }\n  }];\n} catch (e) {\n  return [{ json: { articles: [], articles_count: 0, filter_error: e.message, run_date: new Date().toISOString().split('T')[0] } }];\n}"
+      }
+    },
+    {
+      "id": "check-news",
+      "name": "Hay Novedades",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1800, 550],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "has-articles",
+              "leftValue": "={{ $json.articles_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "build-groq-prompt",
+      "name": "Construir Prompt Groq",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2100, 350],
+      "parameters": {
+        "jsCode": "try {\n  const data = $input.item.json;\n  const articles = data.articles || [];\n  const runDate = data.run_date || new Date().toISOString().split('T')[0];\n\n  const articlesList = articles.map((a, i) =>\n    `${i + 1}. ${a.title}\\nSource: ${a.source || 'inconnue'} | Date: ${a.pubDate || 'N/A'} | Mot-cle: ${a.matched_keyword}\\n${a.snippet}`\n  ).join('\\n\\n');\n\n  const systemPrompt = 'Tu es un analyste specialise dans l\\'industrie du meuble italien, en particulier les canapes et sofas. ' +\n    'Marques cibles: Natuzzi, Max Divani, Estro Milano, Innova Imbottiti, Franco Ferri, Nicoletti, Calia Italia, ' +\n    'Ego Italiano, Gorini, Doimo Salotti, Diva Divani. ' +\n    'Tu rediges des bulletins de veille quotidiens en francais: concis, structures, professionnels. ' +\n    'Format attendu: titre accrocheur, faits cles groupes par marque ou theme, tendances du jour. Maximum 400 mots.';\n\n  const userPrompt = `Date du bulletin: ${runDate}\\nNombre d'articles filtres: ${articles.length}\\n\\n${articlesList}\\n\\nRedige le bulletin de veille en francais.`;\n\n  const groqPayload = {\n    model: 'llama-3.3-70b-versatile',\n    messages: [\n      { role: 'system', content: systemPrompt },\n      { role: 'user', content: userPrompt }\n    ],\n    max_tokens: 1500,\n    temperature: 0.3\n  };\n\n  return [{ json: { ...data, groq_payload: groqPayload, run_date: runDate } }];\n} catch (e) {\n  return [{ json: { ...$input.item.json, prompt_build_error: e.message } }];\n}"
+      }
+    },
+    {
+      "id": "groq-call",
+      "name": "Llamar Groq Llama 3.3 70B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2400, 350],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.groq_payload }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_GROQ_CREDENTIAL_ID",
+          "name": "Groq API"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "format-bulletin",
+      "name": "Formatear Bulletin Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2700, 350],
+      "parameters": {
+        "jsCode": "try {\n  const item = $input.item.json;\n\n  // Rate limit handling — CLAUDE.md pattern: catch 429, surface clearly\n  if (item.error) {\n    const errMsg = item.error?.message || JSON.stringify(item.error);\n    const is429 = errMsg.includes('429') || errMsg.toLowerCase().includes('rate_limit') || errMsg.toLowerCase().includes('rate limit');\n    if (is429) {\n      // Read retry_after if available (Groq returns it in the error body)\n      const retryAfter = item.error?.headers?.['retry-after'] || '60';\n      const msg = `Groq rate limit 429 \\u2014 retry_after: ${retryAfter}s. Bulletin sera genere au prochain cycle.`;\n      return [{ json: { ...item, telegram_text: msg, telegram_parse_mode: 'HTML' } }];\n    }\n    return [{ json: { ...item, telegram_text: `Erreur Groq: ${errMsg.slice(0, 200)}`, telegram_parse_mode: 'HTML' } }];\n  }\n\n  const groqText = item.choices?.[0]?.message?.content || '';\n  if (!groqText) {\n    return [{ json: { ...item, telegram_text: 'Groq a retourne une reponse vide.', telegram_parse_mode: 'HTML' } }];\n  }\n\n  const runDate = item.run_date || new Date().toISOString().split('T')[0];\n  const articlesCount = item.articles_count || 0;\n\n  // Telegram MarkdownV2: escape all reserved characters\n  const escMd = (s) => String(s).replace(/([_*[\\]()~`>#+\\-=|{}.!\\\\])/g, '\\\\$1');\n\n  const header = `\\uD83D\\uDECB *Veille Presse Italienne \\u2014 ${escMd(runDate)}*\\n_${articlesCount} article\\(s\\) filtr\\u00e9\\(s\\)_\\n\\n`;\n  const body = escMd(groqText);\n  const footer = `\\n\\n_Spy de muebles \\u00b7 @Spymuebles\\_bot_`;\n\n  return [{ json: { ...item, telegram_text: header + body + footer, telegram_parse_mode: 'MarkdownV2' } }];\n} catch (e) {\n  return [{ json: { ...$input.item.json, format_error: e.message, telegram_text: `Erreur de formatage: ${e.message}`, telegram_parse_mode: 'HTML' } }];\n}"
+      }
+    },
+    {
+      "id": "send-bulletin",
+      "name": "Enviar Bulletin Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [3000, 350],
+      "parameters": {
+        "chatId": "7289009600",
+        "text": "={{ $json.telegram_text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.telegram_parse_mode || 'MarkdownV2' }}"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram - Spymuebles_bot"
+        }
+      }
+    },
+    {
+      "id": "send-no-news",
+      "name": "Enviar Sin Novedades",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2100, 750],
+      "parameters": {
+        "chatId": "7289009600",
+        "text": "📭 Sin novedades hoy — aucun article sur les sofas italiens detecte dans les sources.\n\nProchain bulletin demain a 8h.",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram - Spymuebles_bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 8am Trigger": {
+      "main": [
+        [
+          { "node": "Fetch Mondomobilio", "type": "main", "index": 0 },
+          { "node": "Fetch Archiproducts", "type": "main", "index": 0 },
+          { "node": "Fetch Furniture Lighting Decor", "type": "main", "index": 0 },
+          { "node": "Fetch Google News IT (Brands)", "type": "main", "index": 0 },
+          { "node": "Fetch Google News EN (Sofa)", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Fetch Mondomobilio": {
+      "main": [
+        [ { "node": "Merge 1", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Fetch Archiproducts": {
+      "main": [
+        [ { "node": "Merge 1", "type": "main", "index": 1 } ]
+      ]
+    },
+    "Merge 1": {
+      "main": [
+        [ { "node": "Merge 2", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Fetch Furniture Lighting Decor": {
+      "main": [
+        [ { "node": "Merge 2", "type": "main", "index": 1 } ]
+      ]
+    },
+    "Merge 2": {
+      "main": [
+        [ { "node": "Merge 3", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Fetch Google News IT (Brands)": {
+      "main": [
+        [ { "node": "Merge 3", "type": "main", "index": 1 } ]
+      ]
+    },
+    "Merge 3": {
+      "main": [
+        [ { "node": "Merge 4", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Fetch Google News EN (Sofa)": {
+      "main": [
+        [ { "node": "Merge 4", "type": "main", "index": 1 } ]
+      ]
+    },
+    "Merge 4": {
+      "main": [
+        [ { "node": "Filtrar por Relevancia Sofas", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Filtrar por Relevancia Sofas": {
+      "main": [
+        [ { "node": "Hay Novedades", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Hay Novedades": {
+      "main": [
+        [ { "node": "Construir Prompt Groq", "type": "main", "index": 0 } ],
+        [ { "node": "Enviar Sin Novedades", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Construir Prompt Groq": {
+      "main": [
+        [ { "node": "Llamar Groq Llama 3.3 70B", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Llamar Groq Llama 3.3 70B": {
+      "main": [
+        [ { "node": "Formatear Bulletin Telegram", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Formatear Bulletin Telegram": {
+      "main": [
+        [ { "node": "Enviar Bulletin Telegram", "type": "main", "index": 0 } ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "tool2-italian-press-monitor",
+  "active": false
+}
