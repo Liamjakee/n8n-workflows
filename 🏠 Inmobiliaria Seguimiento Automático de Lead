@@ -1,0 +1,626 @@
+{
+  "name": "🏠 Inmobiliaria — Seguimiento Automático de Leads",
+  "nodes": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "real-estate-lead",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "b2c3d4e5-f6a7-8901-bcde-f01234567891",
+      "name": "Set Lead Status",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [420, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "leadStatus",
+              "value": "New",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c3d4e5f6-a7b8-9012-cdef-012345678912",
+      "name": "Log Lead to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [640, 300],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $('Webhook').item.json.name }}",
+            "Email": "={{ $('Webhook').item.json.email }}",
+            "Phone": "={{ $('Webhook').item.json.phone }}",
+            "Property": "={{ $('Webhook').item.json.property }}",
+            "Date": "={{ new Date().toISOString().split('T')[0] }}",
+            "Status": "New"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "d4e5f6a7-b8c9-0123-defa-123456789123",
+      "name": "AI Lead Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 300],
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  try {\n    const { name, email, phone, property } = item.json;\n    let score = 20; // base score\n\n    // +30: Premium property type (villa, ático, chalet)\n    const propertyLower = (property || '').toLowerCase();\n    if (\n      propertyLower.includes('villa') ||\n      propertyLower.includes('\\u00e1tico') ||\n      propertyLower.includes('chalet')\n    ) {\n      score += 30;\n    }\n\n    // +20: Phone provided and non-empty\n    if (phone && String(phone).trim() !== '') {\n      score += 20;\n    }\n\n    // +20: Business email domain (not a personal provider)\n    const emailLower = (email || '').toLowerCase();\n    const emailDomain = emailLower.split('@')[1] || '';\n    const personalDomains = [\n      'gmail.com', 'hotmail.com', 'hotmail.es',\n      'yahoo.com', 'yahoo.es', 'outlook.com', 'outlook.es'\n    ];\n    if (emailDomain && !personalDomains.includes(emailDomain)) {\n      score += 20;\n    }\n\n    // +10: Full name (at least first + last)\n    const nameParts = (name || '').trim().split(/\\s+/);\n    if (nameParts.length >= 2 && nameParts[0] && nameParts[1]) {\n      score += 10;\n    }\n\n    let priority;\n    if (score >= 60) priority = 'high';\n    else if (score >= 30) priority = 'medium';\n    else priority = 'low';\n\n    results.push({\n      json: {\n        ...item.json,\n        leadScore: score,\n        priority\n      }\n    });\n\n  } catch (error) {\n    // Handle API rate limiting with exponential backoff\n    if (error.response && error.response.status === 429) {\n      const retryAfter = parseInt(\n        (error.response.headers && error.response.headers['retry-after']) || '60',\n        10\n      );\n      await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));\n      // Retry once with fallback score\n      results.push({\n        json: {\n          ...item.json,\n          leadScore: 20,\n          priority: 'low',\n          scoringError: 'rate_limited_fallback'\n        }\n      });\n    } else {\n      throw error;\n    }\n  }\n}\n\nreturn results;"
+      }
+    },
+    {
+      "id": "e5f6a7b8-c9d0-1234-efab-234567890134",
+      "name": "Wait 24 Hours",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1080, 300],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 24,
+        "unit": "hours"
+      }
+    },
+    {
+      "id": "f6a7b8c9-d0e1-2345-fabc-345678901245",
+      "name": "Check Gmail for Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1300, 300],
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "filters": {
+          "q": "=from:{{ $('Webhook').item.json.email }} is:unread"
+        },
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "a7b8c9d0-e1f2-3456-abcd-456789012356",
+      "name": "Has Lead Replied? (1)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1520, 300],
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.all().length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b8c9d0e1-f2a3-4567-bcde-567890123467",
+      "name": "Send Follow-up Email 1",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1740, 460],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Webhook').item.json.email }}",
+        "subject": "=Seguimiento sobre su consulta \u2014 {{ $('Webhook').item.json.property }}",
+        "message": "=<p>Hola {{ $('Webhook').item.json.name }},</p><p>Le escribimos desde nuestra agencia para asegurarnos de que recibi\u00f3 nuestra respuesta inicial sobre <strong>{{ $('Webhook').item.json.property }}</strong>.</p><p>Estamos aqu\u00ed para resolver cualquier duda que tenga y ayudarle a dar el siguiente paso. Si le viene bien, estaremos encantados de organizar una visita o una llamada a su conveniencia.</p><p>Quedo a su disposici\u00f3n.</p><p>Un saludo,<br>El equipo de la agencia</p>",
+        "options": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "c9d0e1f2-a3b4-5678-cdef-678901234578",
+      "name": "WhatsApp Follow-up 1",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1960, 460],
+      "parameters": {
+        "operation": "sendSms",
+        "to": "=whatsapp:{{ $('Webhook').item.json.phone }}",
+        "from": "whatsapp:+14155238886",
+        "message": "=Hola {{ $('Webhook').item.json.name }} \ud83d\udc4b Le escribimos desde la agencia inmobiliaria. Vimos que mostr\u00f3 inter\u00e9s en *{{ $('Webhook').item.json.property }}* y quer\u00edamos asegurarnos de que no se qued\u00f3 sin respuesta. \u00bfTiene alguna pregunta o le gustar\u00eda concertar una visita? Estamos a su disposici\u00f3n \ud83c\udfe1"
+      },
+      "credentials": {
+        "twilioApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "id": "d0e1f2a3-b4c5-6789-defa-789012345689",
+      "name": "Update Status \u2014 Seguimiento 1",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2180, 460],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Email",
+              "lookupValue": "={{ $('Webhook').item.json.email }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "values": [
+            {
+              "column": "Status",
+              "fieldValue": "Seguimiento 1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "e1f2a3b4-c5d6-7890-efab-890123456790",
+      "name": "Wait 3 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [2400, 460],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 3,
+        "unit": "days"
+      }
+    },
+    {
+      "id": "f2a3b4c5-d6e7-8901-fabc-901234567801",
+      "name": "Check Gmail for Reply (2)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2620, 460],
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "filters": {
+          "q": "=from:{{ $('Webhook').item.json.email }} is:unread"
+        },
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "a3b4c5d6-e7f8-9012-abcd-012345678912",
+      "name": "Has Lead Replied? (2)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [2840, 460],
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.all().length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b4c5d6e7-f8a9-0123-bcde-123456789023",
+      "name": "Send Follow-up Email 2",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [3060, 600],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Webhook').item.json.email }}",
+        "subject": "=\u00bfSigue interesado en {{ $('Webhook').item.json.property }}?",
+        "message": "=<p>Hola {{ $('Webhook').item.json.name }},</p><p>Este es nuestro \u00faltimo mensaje para no molestarle. Si sigue interesado en <strong>{{ $('Webhook').item.json.property }}</strong> o en otras propiedades similares, estaremos encantados de ayudarle.</p><p>Si las circunstancias cambian en el futuro, no dude en ponerse en contacto con nosotros.</p><p>Le deseamos mucho \u00e9xito en su b\u00fasqueda.</p><p>Saludos,<br>El equipo de la agencia</p>",
+        "options": {
+          "bodyContentType": "html"
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "c5d6e7f8-a9b0-1234-cdef-234567890134",
+      "name": "WhatsApp Follow-up 2",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [3280, 600],
+      "parameters": {
+        "operation": "sendSms",
+        "to": "=whatsapp:{{ $('Webhook').item.json.phone }}",
+        "from": "whatsapp:+14155238886",
+        "message": "=Hola {{ $('Webhook').item.json.name }}, este ser\u00e1 nuestro \u00faltimo mensaje. Si en alg\u00fan momento retoma la b\u00fasqueda de *{{ $('Webhook').item.json.property }}* o propiedades similares, aqu\u00ed estaremos \ud83c\udfe1 \u00a1Mucha suerte!"
+      },
+      "credentials": {
+        "twilioApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "id": "d6e7f8a9-b0c1-2345-defa-345678901245",
+      "name": "Update Status \u2014 Seguimiento 2",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [3500, 600],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Email",
+              "lookupValue": "={{ $('Webhook').item.json.email }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "values": [
+            {
+              "column": "Status",
+              "fieldValue": "Seguimiento 2 / Sin respuesta"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "e7f8a9b0-c1d2-3456-efab-456789012356",
+      "name": "Telegram Alert \u2014 Lead Replied",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [3060, 300],
+      "parameters": {
+        "chatId": "YOUR_AGENT_CHAT_ID",
+        "text": "=\ud83d\udd14 *LEAD HA RESPONDIDO*\n\n\ud83d\udc64 Nombre: {{ $('Webhook').item.json.name }}\n\ud83d\udce7 Email: {{ $('Webhook').item.json.email }}\n\ud83d\udcf1 Tel\u00e9fono: {{ $('Webhook').item.json.phone }}\n\ud83c\udfe0 Propiedad: {{ $('Webhook').item.json.property }}\n\n\u26a1 Necesita atenci\u00f3n inmediata\\. Responda lo antes posible\\.",
+        "additionalFields": {
+          "parseMode": "MarkdownV2"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "f8a9b0c1-d2e3-4567-fabc-567890123467",
+      "name": "Update Status \u2014 Respondido",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [3280, 300],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Email",
+              "lookupValue": "={{ $('Webhook').item.json.email }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "values": [
+            {
+              "column": "Status",
+              "fieldValue": "Respondido \u2014 Acci\u00f3n requerida"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Set Lead Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Lead Status": {
+      "main": [
+        [
+          {
+            "node": "Log Lead to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Lead to Sheets": {
+      "main": [
+        [
+          {
+            "node": "AI Lead Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Lead Score": {
+      "main": [
+        [
+          {
+            "node": "Wait 24 Hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 24 Hours": {
+      "main": [
+        [
+          {
+            "node": "Check Gmail for Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Gmail for Reply": {
+      "main": [
+        [
+          {
+            "node": "Has Lead Replied? (1)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Lead Replied? (1)": {
+      "main": [
+        [
+          {
+            "node": "Telegram Alert \u2014 Lead Replied",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Follow-up Email 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-up Email 1": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Follow-up 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Follow-up 1": {
+      "main": [
+        [
+          {
+            "node": "Update Status \u2014 Seguimiento 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status \u2014 Seguimiento 1": {
+      "main": [
+        [
+          {
+            "node": "Wait 3 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3 Days": {
+      "main": [
+        [
+          {
+            "node": "Check Gmail for Reply (2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Gmail for Reply (2)": {
+      "main": [
+        [
+          {
+            "node": "Has Lead Replied? (2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Lead Replied? (2)": {
+      "main": [
+        [
+          {
+            "node": "Telegram Alert \u2014 Lead Replied",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Follow-up Email 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-up Email 2": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Follow-up 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Follow-up 2": {
+      "main": [
+        [
+          {
+            "node": "Update Status \u2014 Seguimiento 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Alert \u2014 Lead Replied": {
+      "main": [
+        [
+          {
+            "node": "Update Status \u2014 Respondido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "pinData": {}
+}
