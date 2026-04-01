@@ -1,0 +1,726 @@
+{
+  "name": "El Prospector — Motor de Descubrimiento de Fábricas Italianas",
+  "nodes": [
+    {
+      "id": "p-node-01",
+      "name": "Programar Lunes 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p-node-02",
+      "name": "Inicializar Ejecución",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300],
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\n\n// Limpiar acumuladores de la ejecución anterior\nstaticData['discovered_urls'] = [];\nstaticData['qualified_this_run'] = [];\nstaticData['factories_processed'] = 0;\nstaticData['run_start'] = new Date().toISOString();\n\nconst SERP_KEY = 'YOUR_SERPAPI_KEY';\n\nconst sources = [\n  {\n    type: 'serpapi',\n    label: 'SerpAPI: fabricante de sof\u00e1s italianos',\n    url: 'https://serpapi.com/search?q=produttore+divani+italiani&gl=it&hl=it&num=20&engine=google&api_key=' + SERP_KEY\n  },\n  {\n    type: 'serpapi',\n    label: 'SerpAPI: f\u00e1brica de sof\u00e1s a medida exportaci\u00f3n',\n    url: 'https://serpapi.com/search?q=fabbrica+divani+su+misura+esportazione&gl=it&hl=it&num=20&engine=google&api_key=' + SERP_KEY\n  },\n  {\n    type: 'serpapi',\n    label: 'SerpAPI: manufactura de sof\u00e1s exportaci\u00f3n Francia',\n    url: 'https://serpapi.com/search?q=manifattura+divani+export+Francia&gl=it&hl=it&num=20&engine=google&api_key=' + SERP_KEY\n  },\n  {\n    type: 'serpapi',\n    label: 'SerpAPI: sof\u00e1s producci\u00f3n por terceros f\u00e1brica salones italianos exportaci\u00f3n',\n    url: 'https://serpapi.com/search?q=divani+produzione+conto+terzi+fabbrica+salotti+italiani+export&gl=it&hl=it&num=20&engine=google&api_key=' + SERP_KEY\n  },\n  {\n    type: 'scrape',\n    label: 'Directorio Federlegno Arredo',\n    url: 'https://www.federlegno.it/associati/?settore=divani'\n  },\n  {\n    type: 'scrape',\n    label: 'Fabricantes Italianos Furniture.eu',\n    url: 'https://www.furniture.eu/it/produttori/?country=italy&category=divani'\n  }\n];\n\nreturn sources.map(s => ({ json: s }));"
+      }
+    },
+    {
+      "id": "p-node-03",
+      "name": "Dividir Fuentes de Búsqueda",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [750, 300],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "p-node-04",
+      "name": "Obtener Fuente de Descubrimiento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 300],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "p-node-04a",
+      "name": "SI 429 SerpAPI",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1350, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "serp-429-cond",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 429,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true
+      }
+    },
+    {
+      "id": "p-node-04b",
+      "name": "Esperar Reintento SerpAPI",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1600, 80],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 60,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "p-node-04c",
+      "name": "Reintento de Obtención SerpAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1900, 80],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Dividir Fuentes de Búsqueda').first().json.url }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "p-node-05",
+      "name": "Acumular Resultados de Búsqueda",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2150, 300],
+      "parameters": {
+        "jsCode": "function extractDomain(url) {\n  try {\n    return new URL(url).hostname.replace(/^www\\./, '');\n  } catch(e) {\n    return '';\n  }\n}\n\nfunction cleanBaseUrl(url) {\n  try {\n    const u = new URL(url);\n    return u.protocol + '//' + u.hostname;\n  } catch(e) {\n    return url;\n  }\n}\n\nconst staticData = $getWorkflowStaticData('global');\nconst response = $input.first().json;\nconst sourceItem = $('Dividir Fuentes de B\u00fasqueda').first().json;\n\nconst REJECTION_KEYWORDS = ['showroom', 'punto vendita', 'rivenditore', 'negozio', 'outlet', 'retailer'];\nconst allResults = staticData['discovered_urls'] || [];\nconst seenDomains = new Set(allResults.map(r => r.domain));\n\nlet newItems = [];\n\nif (sourceItem.type === 'serpapi') {\n  const organic = response.organic_results || [];\n  for (const r of organic) {\n    const url = r.link || '';\n    const domain = extractDomain(url);\n    if (!domain || seenDomains.has(domain)) continue;\n    const titleLower = (r.title || '').toLowerCase();\n    const isRetail = REJECTION_KEYWORDS.some(kw => titleLower.includes(kw) || domain.includes(kw));\n    if (isRetail) continue;\n    if (!domain.endsWith('.it') && !domain.endsWith('.eu') && !domain.endsWith('.com')) continue;\n    newItems.push({\n      name: r.title || domain,\n      url: cleanBaseUrl(url),\n      domain: domain,\n      source: sourceItem.label\n    });\n    seenDomains.add(domain);\n  }\n} else {\n  // Scrape HTML: extraer URLs .it con patrón simple\n  const html = response.data || response.body || '';\n  const urlRegex = /https?:\\/\\/(?:www\\.)?[\\w-]+\\.it[\\w/.?=#%-]*/g;\n  const urlMatches = html.match(urlRegex) || [];\n  for (const url of urlMatches) {\n    const domain = extractDomain(url);\n    if (!domain || seenDomains.has(domain)) continue;\n    if (domain.includes('federlegno') || domain.includes('furniture.eu') || domain.includes('google')) continue;\n    newItems.push({\n      name: domain.replace('.it', '').replace(/-/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase()),\n      url: cleanBaseUrl(url),\n      domain: domain,\n      source: sourceItem.label\n    });\n    seenDomains.add(domain);\n  }\n}\n\nstaticData['discovered_urls'] = [...allResults, ...newItems];\n\nreturn [{ json: { added: newItems.length, total: staticData['discovered_urls'].length, source: sourceItem.label } }];"
+      }
+    },
+    {
+      "id": "p-node-06",
+      "name": "Leer Base de Datos de Fábricas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [750, 540],
+      "continueOnFail": true,
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEETS_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Factories",
+          "mode": "name"
+        },
+        "filtersUI": {},
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "id": "p-node-07",
+      "name": "Filtrar Nuevas Fábricas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 540],
+      "parameters": {
+        "jsCode": "function extractDomain(url) {\n  try {\n    return new URL(url).hostname.replace(/^www\\./, '');\n  } catch(e) {\n    return (url || '').replace(/^https?:\\/\\/(?:www\\.)?/, '').split('/')[0];\n  }\n}\n\nconst staticData = $getWorkflowStaticData('global');\nconst sheetsRows = $input.all();\n\n// Construir conjunto de dominios ya conocidos desde Google Sheets Columna B (Website URL)\nconst knownDomains = new Set();\nfor (const row of sheetsRows) {\n  const url = row.json['Website URL'] || row.json['B'] || row.json.website || '';\n  const domain = extractDomain(url);\n  if (domain) knownDomains.add(domain);\n}\n\n// Excluidos permanentemente: proveedores actuales del cliente + nivel ultra-lujo\nconst EXCLUDED_DOMAINS = new Set([\n  'natuzzi.com', 'nicolettihome.com', 'calia.it', 'maxdivani.it',\n  'estromilano.it', 'innovaimbottiti.it', 'francoferri.it', 'egoitaliano.it',\n  'gorini.it', 'doimosalotti.it', 'divadivani.it',\n  'bebitalia.com', 'poltrona-frau.com', 'cassina.com', 'flexform.it',\n  'minotti.it', 'rolfbenz.de', 'maxalto.it', 'edraonline.com'\n]);\n\nconst discovered = staticData['discovered_urls'] || [];\n\nconst newFactories = discovered.filter(f => {\n  if (!f.domain || !f.url) return false;\n  if (knownDomains.has(f.domain)) return false;\n  if (EXCLUDED_DOMAINS.has(f.domain)) return false;\n  return true;\n});\n\nstaticData['qualified_this_run'] = [];\nstaticData['factories_to_process'] = newFactories.length;\n\nif (newFactories.length === 0) {\n  return [{ json: { _skip: true, name: '__no_new_factories__', url: '', domain: '', source: '' } }];\n}\n\nreturn newFactories.map(f => ({ json: f }));"
+      }
+    },
+    {
+      "id": "p-node-08",
+      "name": "Dividir Fábricas para Evaluar",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1350, 540],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "p-node-09",
+      "name": "SI Omitir Elemento",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1650, 540],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "skip-cond",
+              "leftValue": "={{ $json._skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true
+      }
+    },
+    {
+      "id": "p-node-10",
+      "name": "Esperar 15 Segundos",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1900, 780],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 15,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "p-node-11",
+      "name": "Obtener Página Principal de Fábrica",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2150, 780],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 30000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": true,
+              "maxRedirects": 5
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "p-node-12",
+      "name": "Preparar Solicitud de Evaluación Groq",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2400, 780],
+      "parameters": {
+        "jsCode": "const scrapedData = $input.first().json;\nconst factoryData = $('Esperar 15 Segundos').first().json;\n\nconst html = typeof scrapedData.data === 'string' ? scrapedData.data\n  : typeof scrapedData.body === 'string' ? scrapedData.body\n  : (scrapedData.error ? '' : JSON.stringify(scrapedData).substring(0, 2000));\n\nconst truncated = html.substring(0, 6000);\n\nconst REJECTION_KEYWORDS = ['showroom', 'punto vendita', 'rivenditore', 'negozio', 'outlet'];\nconst htmlLower = truncated.toLowerCase();\nconst foundRejectionKw = REJECTION_KEYWORDS.filter(kw => htmlLower.includes(kw));\n\nconst systemLines = [\n  'Eres un analista de aprovisionamiento B2B para un distribuidor franc\u00e9s de muebles.',\n  'Eval\u00faa fabricantes italianos de sof\u00e1s para su potencial de asociaci\u00f3n de distribuci\u00f3n.',\n  'Devuelve \u00danicaMENTE un objeto JSON v\u00e1lido. Sin markdown. Sin bloques de c\u00f3digo. Nada m\u00e1s.',\n  '',\n  'Criterios de puntuaci\u00f3n:',\n  'Criterio 1 \u2014 FABRICANTE de sof\u00e1s/tapicер\u00eda (no minorista, no accesorios): puerta PASA/FALLA',\n  'Criterio 2 \u2014 Se\u00f1al de capacidad de exportaci\u00f3n (contenido no italiano, secci\u00f3n de exportaci\u00f3n, contacto internacional): puerta PASA/FALLA',\n  'Criterio 3 \u2014 Nivel accesible (NO ultra-lujo nivel B&B Italia / Poltrona Frau): puerta PASA/FALLA',\n  'Criterio 4 \u2014 Calidad del cat\u00e1logo profesional (colecciones nombradas, fotograf\u00eda profesional): 0-3 pts',\n  'Criterio 5 \u2014 Sin distribuci\u00f3n francesa detectada (sin p\u00e1gina de distribuidor franc\u00e9s, sin secci\u00f3n de socio franc\u00e9s): 0-3 pts',\n  'Criterio 6 \u2014 Ausencia de competidores (no en cat\u00e1logos de competidores conocidos; asumir 2 pts si desconocido): 0-4 pts',\n  '',\n  'Fallo autom\u00e1tico en el Criterio 1 si aparecen estas palabras: showroom, punto vendita, rivenditore, negozio, outlet',\n  '',\n  'Devuelve JSON con EXACTAMENTE esta estructura (usa claves y valores de cadena entre comillas dobles):',\n  '{',\n  '  \"factory_name\": \"\",',\n  '  \"passes_gates\": true,',\n  '  \"gate_failures\": [],',\n  '  \"score\": 0,',\n  '  \"score_breakdown\": { \"catalogue\": 0, \"no_french_distribution\": 0, \"competitor_absence\": 0 },',\n  '  \"product_focus\": \"\",',\n  '  \"contact_email\": \"\",',\n  '  \"region\": \"\",',\n  '  \"french_summary\": \"resumen de 2-3 oraciones en franc\u00e9s para un informe de distribuidor\",',\n  '  \"rejection_reason\": \"\"',\n  '}',\n  '',\n  'score = suma de Criterio 4 + 5 + 6 (m\u00e1x 10). passes_gates = true solo si los Criterios 1 Y 2 Y 3 pasan.',\n  'Umbral de calificaci\u00f3n: score >= 5 Y passes_gates = true.'\n];\n\nconst systemPrompt = systemLines.join('\\n');\n\nconst userMessage = 'URL de la f\u00e1brica: ' + factoryData.url\n  + '\\nNombre de la f\u00e1brica (desde descubrimiento): ' + (factoryData.name || 'Desconocido')\n  + '\\nFuente de descubrimiento: ' + (factoryData.source || '')\n  + '\\nPalabras clave de rechazo encontradas en prescaneo: ' + (foundRejectionKw.length > 0 ? foundRejectionKw.join(', ') : 'ninguna')\n  + '\\n\\nMuestra de contenido del sitio web (primeros 6000 caracteres):\\n' + truncated;\n\nconst groqBody = {\n  model: 'llama-3.3-70b-versatile',\n  messages: [\n    { role: 'system', content: systemPrompt },\n    { role: 'user', content: userMessage }\n  ],\n  temperature: 0.1,\n  max_tokens: 1024\n};\n\nreturn [{ json: {\n  name: factoryData.name,\n  url: factoryData.url,\n  domain: factoryData.domain,\n  source: factoryData.source,\n  groqBody: groqBody\n} }];"
+      }
+    },
+    {
+      "id": "p-node-13",
+      "name": "Análisis de Evaluación Groq",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2650, 780],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.groqBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "p-node-13a",
+      "name": "SI 429 Groq",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2900, 780],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "groq-429-cond",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 429,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true
+      }
+    },
+    {
+      "id": "p-node-13b",
+      "name": "Esperar Reintento Groq",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [3150, 560],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 60,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "p-node-13c",
+      "name": "Reintento de Evaluación Groq",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3400, 560],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Preparar Solicitud de Evaluación Groq').first().json.groqBody) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "p-node-14",
+      "name": "Analizar y Guardar Resultado de Evaluación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3650, 780],
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst factoryData = $('Esperar 15 Segundos').first().json;\nconst staticData = $getWorkflowStaticData('global');\n\nstaticData['factories_processed'] = (staticData['factories_processed'] || 0) + 1;\n\nlet responseContent = '';\n\nif (item.choices && Array.isArray(item.choices) && item.choices.length > 0) {\n  responseContent = (item.choices[0].message && item.choices[0].message.content) ? item.choices[0].message.content : '';\n} else {\n  responseContent = JSON.stringify({\n    factory_name: factoryData.name || factoryData.url,\n    passes_gates: false,\n    gate_failures: ['Error de API Groq: ' + JSON.stringify(item).substring(0, 100)],\n    score: 0,\n    score_breakdown: { catalogue: 0, no_french_distribution: 0, competitor_absence: 0 },\n    product_focus: '',\n    contact_email: '',\n    region: '',\n    french_summary: '',\n    rejection_reason: 'Error de API Groq durante la evaluaci\u00f3n'\n  });\n}\n\n// Eliminar bloques de código markdown antes de analizar\nresponseContent = responseContent\n  .replace(/^```json\\s*/i, '')\n  .replace(/^```\\s*/i, '')\n  .replace(/\\s*```$/i, '')\n  .trim();\n\nlet result;\ntry {\n  result = JSON.parse(responseContent);\n  result.factory_name = result.factory_name || factoryData.name || factoryData.url || 'Desconocido';\n  result.score = Math.max(0, Math.min(10, Number(result.score) || 0));\n  result.passes_gates = Boolean(result.passes_gates);\n  result.gate_failures = Array.isArray(result.gate_failures) ? result.gate_failures : [];\n  result.score_breakdown = result.score_breakdown || { catalogue: 0, no_french_distribution: 0, competitor_absence: 0 };\n  result.contact_email = result.contact_email || '';\n  result.region = result.region || '';\n  result.french_summary = result.french_summary || '';\n  result.rejection_reason = result.rejection_reason || '';\n  result.product_focus = result.product_focus || '';\n} catch(e) {\n  result = {\n    factory_name: factoryData.name || 'Desconocido',\n    passes_gates: false,\n    gate_failures: ['Error de an\u00e1lisis JSON: ' + e.message],\n    score: 0,\n    score_breakdown: { catalogue: 0, no_french_distribution: 0, competitor_absence: 0 },\n    product_focus: '',\n    contact_email: '',\n    region: '',\n    french_summary: '',\n    rejection_reason: 'Error de an\u00e1lisis: ' + responseContent.substring(0, 150)\n  };\n}\n\nresult.website = factoryData.url || '';\nresult.domain = factoryData.domain || '';\nresult.source = factoryData.source || '';\nresult.date_discovered = new Date().toISOString().split('T')[0];\nresult.status = (result.score >= 5 && result.passes_gates) ? 'Calificado' : 'Rechazado';\n\nif (result.score >= 5 && result.passes_gates) {\n  const q = staticData['qualified_this_run'] || [];\n  q.push(result);\n  staticData['qualified_this_run'] = q;\n}\n\nreturn [{ json: result }];"
+      }
+    },
+    {
+      "id": "p-node-15",
+      "name": "SI Puntuación >= 5",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [3900, 780],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "score-cond",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "gates-cond",
+              "leftValue": "={{ $json.passes_gates }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true
+      }
+    },
+    {
+      "id": "p-node-16",
+      "name": "Escribir en Hoja Calificados",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [4150, 640],
+      "continueOnFail": true,
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEETS_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Qualified",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Nombre de Fábrica": "={{ $json.factory_name }}",
+            "URL del Sitio Web": "={{ $json.website }}",
+            "Región Italiana": "={{ $json.region }}",
+            "Enfoque de Producto": "={{ $json.product_focus }}",
+            "Puntuación de Evaluación": "={{ $json.score }}",
+            "Desglose de Puntuación": "={{ JSON.stringify($json.score_breakdown) }}",
+            "Fecha de Descubrimiento": "={{ $json.date_discovered }}",
+            "Estado": "Nuevo",
+            "Email de Contacto": "={{ $json.contact_email }}",
+            "Resumen IA (Francés)": "={{ $json.french_summary }}",
+            "Notas de Contacto": ""
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "id": "p-node-17",
+      "name": "Escribir en Hoja Rechazados",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [4150, 960],
+      "continueOnFail": true,
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEETS_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Rejected",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Nombre de Fábrica": "={{ $json.factory_name }}",
+            "URL del Sitio Web": "={{ $json.website }}",
+            "Región Italiana": "={{ $json.region }}",
+            "Enfoque de Producto": "={{ $json.product_focus }}",
+            "Puntuación de Evaluación": "={{ $json.score }}",
+            "Desglose de Puntuación": "={{ JSON.stringify($json.score_breakdown) }}",
+            "Fecha de Descubrimiento": "={{ $json.date_discovered }}",
+            "Estado": "Rechazado",
+            "Email de Contacto": "={{ $json.contact_email }}",
+            "Resumen IA (Francés)": "={{ $json.french_summary }}",
+            "Notas de Contacto": "={{ $json.rejection_reason }}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "id": "p-node-18",
+      "name": "Ordenar y Formatear Informe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 300],
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\n\nconst qualified = (staticData['qualified_this_run'] || [])\n  .sort((a, b) => b.score - a.score)\n  .slice(0, 5);\n\nconst processed = staticData['factories_processed'] || 0;\nconst rejected = processed - qualified.length;\n\nconst now = new Date();\nconst pad = n => String(n).padStart(2, '0');\nconst dateStr = pad(now.getDate()) + '/' + pad(now.getMonth() + 1) + '/' + now.getFullYear();\n\nlet message;\n\nif (qualified.length === 0) {\n  message = [\n    '\uD83D\uDD0D <b>THE PROSPECTOR</b> \u2014 Semana del ' + dateStr,\n    '\u2705 Escaneo completado \u2014 ninguna nueva f\u00e1brica calificada esta semana',\n    '\uD83D\uDCCA ' + processed + ' candidato' + (processed !== 1 ? 's' : '') + ' analizado' + (processed !== 1 ? 's' : '') + ', ' + rejected + ' rechazado' + (rejected !== 1 ? 's' : ''),\n    '\uD83D\uDCC5 ' + dateStr\n  ].join('\\n');\n} else {\n  const medals = ['\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49', '4\uFE0F\u20E3', '5\uFE0F\u20E3'];\n  const n = qualified.length;\n\n  const lines = [\n    '\uD83D\uDD0D <b>THE PROSPECTOR</b> \u2014 Semana del ' + dateStr,\n    '<b>' + n + ' nueva' + (n > 1 ? 's' : '') + ' f\u00e1brica' + (n > 1 ? 's' : '') + ' identificada' + (n > 1 ? 's' : '') + '</b>',\n    ''\n  ];\n\n  for (let i = 0; i < qualified.length; i++) {\n    const f = qualified[i];\n    lines.push(medals[i] + ' <b>' + f.factory_name + '</b>' + (f.region ? ' (' + f.region + ')' : '') + ' \u2014 Puntuaci\u00f3n\u00a0: ' + f.score + '/10');\n    if (f.french_summary) lines.push(f.french_summary);\n    if (f.contact_email) lines.push('\uD83D\uDCE7 ' + f.contact_email);\n    if (f.website) lines.push('\uD83C\uDF0D ' + f.website);\n    lines.push('');\n  }\n\n  lines.push('\u27A1\uFE0F Base completa\u00a0: Google Sheets');\n  lines.push('\uD83D\uDCCA ' + processed + ' candidatos analizados en total');\n  lines.push('\uD83D\uDCC5 ' + dateStr);\n\n  message = lines.join('\\n');\n}\n\nconst MAX_CHUNK = 3800;\nconst chunks = [];\nlet remaining = message;\nwhile (remaining.length > 0) {\n  if (remaining.length <= MAX_CHUNK) {\n    chunks.push(remaining);\n    break;\n  }\n  let cut = remaining.lastIndexOf('\\n', MAX_CHUNK);\n  if (cut < 0) cut = MAX_CHUNK;\n  chunks.push(remaining.substring(0, cut));\n  remaining = remaining.substring(cut + 1);\n}\n\nreturn chunks.map((chunk, i) => ({\n  json: {\n    text: chunk,\n    chunk_index: i + 1,\n    total_chunks: chunks.length\n  }\n}));"
+      }
+    },
+    {
+      "id": "p-node-19",
+      "name": "Enviar Informe por Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1950, 300],
+      "continueOnFail": true,
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CREDENTIAL_ID",
+          "name": "Prospector Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Programar Lunes 07:00": {
+      "main": [
+        [
+          { "node": "Inicializar Ejecución", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Inicializar Ejecución": {
+      "main": [
+        [
+          { "node": "Dividir Fuentes de Búsqueda", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Dividir Fuentes de Búsqueda": {
+      "main": [
+        [
+          { "node": "Obtener Fuente de Descubrimiento", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Leer Base de Datos de Fábricas", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Obtener Fuente de Descubrimiento": {
+      "main": [
+        [
+          { "node": "SI 429 SerpAPI", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "SI 429 SerpAPI": {
+      "main": [
+        [
+          { "node": "Esperar Reintento SerpAPI", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Acumular Resultados de Búsqueda", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Esperar Reintento SerpAPI": {
+      "main": [
+        [
+          { "node": "Reintento de Obtención SerpAPI", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Reintento de Obtención SerpAPI": {
+      "main": [
+        [
+          { "node": "Acumular Resultados de Búsqueda", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Acumular Resultados de Búsqueda": {
+      "main": [
+        [
+          { "node": "Dividir Fuentes de Búsqueda", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Leer Base de Datos de Fábricas": {
+      "main": [
+        [
+          { "node": "Filtrar Nuevas Fábricas", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Filtrar Nuevas Fábricas": {
+      "main": [
+        [
+          { "node": "Dividir Fábricas para Evaluar", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Dividir Fábricas para Evaluar": {
+      "main": [
+        [
+          { "node": "SI Omitir Elemento", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Ordenar y Formatear Informe", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "SI Omitir Elemento": {
+      "main": [
+        [
+          { "node": "Dividir Fábricas para Evaluar", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Esperar 15 Segundos", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Esperar 15 Segundos": {
+      "main": [
+        [
+          { "node": "Obtener Página Principal de Fábrica", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Obtener Página Principal de Fábrica": {
+      "main": [
+        [
+          { "node": "Preparar Solicitud de Evaluación Groq", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Preparar Solicitud de Evaluación Groq": {
+      "main": [
+        [
+          { "node": "Análisis de Evaluación Groq", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Análisis de Evaluación Groq": {
+      "main": [
+        [
+          { "node": "SI 429 Groq", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "SI 429 Groq": {
+      "main": [
+        [
+          { "node": "Esperar Reintento Groq", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Analizar y Guardar Resultado de Evaluación", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Esperar Reintento Groq": {
+      "main": [
+        [
+          { "node": "Reintento de Evaluación Groq", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Reintento de Evaluación Groq": {
+      "main": [
+        [
+          { "node": "Analizar y Guardar Resultado de Evaluación", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Analizar y Guardar Resultado de Evaluación": {
+      "main": [
+        [
+          { "node": "SI Puntuación >= 5", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "SI Puntuación >= 5": {
+      "main": [
+        [
+          { "node": "Escribir en Hoja Calificados", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Escribir en Hoja Rechazados", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Escribir en Hoja Calificados": {
+      "main": [
+        [
+          { "node": "Dividir Fábricas para Evaluar", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Escribir en Hoja Rechazados": {
+      "main": [
+        [
+          { "node": "Dividir Fábricas para Evaluar", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Ordenar y Formatear Informe": {
+      "main": [
+        [
+          { "node": "Enviar Informe por Telegram", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "prospector" },
+    { "name": "factory-discovery" }
+  ],
+  "triggerCount": 1,
+  "versionId": "prospector-v1-2026"
+}
