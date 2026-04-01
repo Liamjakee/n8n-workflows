@@ -1,0 +1,769 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "d97a5c4b-6860-42d4-b147-cb8daf317393",
+      "name": "Disparador Telegram",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1040,
+        336
+      ],
+      "webhookId": "f87d8758-db95-48c7-a0f9-217735980f34",
+      "credentials": {
+        "telegramApi": {
+          "id": "hlhjTnoai3asEJ7f",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "94df21a2-4e36-4dc2-9134-6d3004fe469c",
+      "name": "Disparador Programación Semanal",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -1040,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const body = $input.item.json;\n  const rawMessage = body.message?.text || body.text || '';\n  const chatId = body.message?.chat?.id || body.chat?.id || '';\n  const fromUser = body.message?.from?.first_name || body.message?.from?.username || 'Usuario';\n  const text = (rawMessage || '').trim().toLowerCase();\n  const validKeywords = [\n    'analizar', 'informe', 'tendencia', 'actualizar', 'verificar',\n    'analyze', 'research', 'report', 'check', 'trend', 'update'\n  ];\n  let isValid = false;\n  let command = '';\n  for (const kw of validKeywords) {\n    if (text.includes(kw)) {\n      isValid = true;\n      command = kw;\n      break;\n    }\n  }\n  return [{ json: { trigger_type: 'telegram', raw_message: rawMessage, text_lower: text, chat_id: chatId, from_user: fromUser, is_valid_trigger: isValid, command } }];\n} catch (e) {\n  return [{ json: { trigger_type: 'telegram', is_valid_trigger: false, command: '', chat_id: '', from_user: 'Desconocido', parse_error: e.message } }];\n}"
+      },
+      "id": "e4e4b009-6ceb-447d-bf49-22d4953dbd60",
+      "name": "Analizar Mensaje Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  return [{ json: { trigger_type: 'schedule', raw_message: 'ejecución automática semanal', text_lower: 'ejecución automática semanal', chat_id: '', from_user: 'Programación Automática', is_valid_trigger: true, command: 'informe-semanal' } }];\n} catch (e) {\n  return [{ json: { trigger_type: 'schedule', is_valid_trigger: true, command: 'informe-semanal', chat_id: '', from_user: 'Programación Automática', schedule_error: e.message } }];\n}"
+      },
+      "id": "f5274936-93da-46e8-b140-bbe7d68a643a",
+      "name": "Configurar Valores Predeterminados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -752,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "valid-trigger-flag",
+              "leftValue": "={{ $json.is_valid_trigger }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d124646c-65cb-416e-81f9-0415d7860363",
+      "name": "¿Es Disparador Válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "❌ <b>Comando no reconocido.</b>\n\nEnvía una de estas palabras para iniciar:\n<code>analizar</code> · <code>informe</code> · <code>tendencia</code> · <code>actualizar</code>\n\nO el nombre de una fábrica, por ejemplo: <code>natuzzi</code> o <code>calia italia</code>",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "6f718016-5f55-4572-80f5-5a28ae8485e4",
+      "name": "Enviar Respuesta No Reconocida",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -144,
+        288
+      ],
+      "webhookId": "52686b08-c943-4a26-855b-8ef3a07bd78e",
+      "credentials": {
+        "telegramApi": {
+          "id": "hlhjTnoai3asEJ7f",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id || 7289009600 }}",
+        "text": "🔍 <b>Iniciando análisis de fábricas de sofás...</b>\n\nAnalizando 24 fábricas competidoras. Esto tardará unos <b>3–5 minutos</b>. Te aviso cuando esté listo. ☕",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "9e1c12b4-006d-4922-bc0a-cb11367233b2",
+      "name": "Enviar Confirmación",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -144,
+        640
+      ],
+      "webhookId": "ae4bf2e8-a008-40f3-9477-177215c43b3d",
+      "credentials": {
+        "telegramApi": {
+          "id": "hlhjTnoai3asEJ7f",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const base = $input.item.json;\n  const FRESH_DAYS = 5;\n\n  // Factory list hardcoded from FACTORY_DATABASE.json — edit this array to add/remove factories\n  const factories = [\n    { factory_name: 'Natuzzi',          instagram_url: 'https://www.instagram.com/natuzzi/',               tiktok_url: '',                                      bestsellers_url: 'https://www.natuzzi.com/us/en/shop/natuzzi-italia' },\n    { factory_name: 'Poltrona Frau',    instagram_url: 'https://www.instagram.com/poltronafrauofficial/', tiktok_url: '',                                      bestsellers_url: 'https://www.poltronafrau.com/us/en/products/new-products.53720.html' },\n    { factory_name: 'B&B Italia',       instagram_url: 'https://www.instagram.com/bebitalia/',            tiktok_url: '',                                      bestsellers_url: 'https://shop.bebitalia.com/en/it/shop-products/new-in/' },\n    { factory_name: 'Minotti',          instagram_url: 'https://www.instagram.com/minotti_spa/',          tiktok_url: '',                                      bestsellers_url: 'https://www.minotti.com/en/2025-collection' },\n    { factory_name: 'Flexform',         instagram_url: 'https://www.instagram.com/flexformspa/',          tiktok_url: '',                                      bestsellers_url: 'https://www.flexform.it/en/communications/all-articles/news/flexform-2025-collection-catalog' },\n    { factory_name: 'Cassina',          instagram_url: 'https://www.instagram.com/cassinaofficial/',     tiktok_url: '',                                      bestsellers_url: 'https://www.cassina.com/ww/en/products.html' },\n    \n  // Read freshness data from workflow static data — no fs module needed\n  const staticData = $getWorkflowStaticData('global');\n  const snapshots = staticData.snapshots || {};\n\n  const now = new Date();\n  const freshMs = FRESH_DAYS * 24 * 60 * 60 * 1000;\n\n  return factories.map(function(f) {\n    const snap = snapshots[f.factory_name] || {};\n    const lastScraped = snap.last_scraped ? new Date(snap.last_scraped) : null;\n    const isFresh = lastScraped && (now - lastScraped) < freshMs;\n    return {\n      json: {\n        trigger_type: base.trigger_type,\n        chat_id: base.chat_id,\n        from_user: base.from_user,\n        factory_name: f.factory_name,\n        factory_slug: f.factory_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),\n        instagram_url: f.instagram_url,\n        tiktok_url: f.tiktok_url,\n        bestsellers_url: f.bestsellers_url,\n        run_date: now.toISOString().split('T')[0],\n        _skip: !!isFresh,\n        _skip_reason: isFresh ? ('Datos frescos — última scrape: ' + lastScraped.toISOString().split('T')[0]) : null\n      }\n    };\n  });\n} catch (e) {\n  return [{ json: { factory_list_error: e.message, is_valid_trigger: false } }];\n}"
+      },
+      "id": "5865c283-c7f9-4f72-bdc9-b533ce239650",
+      "name": "Construir Lista de Fábricas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "44257dd0-4138-4b7a-84cf-686c892d7375",
+      "name": "Procesar Cada Fábrica",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        464,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "skip-fresh-flag",
+              "leftValue": "={{ $json._skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5abf2f08-d8cf-4568-a180-6063402b19a2",
+      "name": "¿Saltear Fábrica?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        624,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const f = $input.item.json;\n\n  // Read cached products from workflow static data — no fs module needed\n  const staticData = $getWorkflowStaticData('global');\n  const snapshots = staticData.snapshots || {};\n  const snap = snapshots[f.factory_name] || {};\n\n  return [{\n    json: {\n      run_date: f.run_date,\n      factory_name: f.factory_name,\n      factory_slug: f.factory_slug,\n      source_type: 'snapshot_cache',\n      source_label: 'Caché — datos frescos',\n      url: '',\n      products: snap.products || [],\n      social: snap.social || {},\n      market_intel: snap.market_intel || {},\n      actionable_insights: snap.actionable_insights || [],\n      _omitido: true,\n      _motivo_omision: f._skip_reason || 'DATOS_FRESCOS'\n    }\n  }];\n} catch (e) {\n  return [{ json: {\n    factory_name: $input.item.json.factory_name || 'DESCONOCIDO',\n    source_type: 'snapshot_cache',\n    products: [], social: {}, market_intel: {}, actionable_insights: [],\n    _omitido: true, _motivo_omision: e.message\n  } }];\n}"
+      },
+      "id": "0d5c4826-4a67-4901-b9ca-807aca23aff3",
+      "name": "Crear Item Saltado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "id": "35fd3ad4-1d38-4489-89f8-cdaabc1c62c4",
+      "name": "Límite de Velocidad — 10s Entre Fábricas",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        832,
+        800
+      ],
+      "webhookId": "1a9446b7-ec60-4feb-b86e-121af6dab965"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const f = $input.item.json;\n  const name = f.factory_name;\n\n  // Guard: if factory_name is missing the list node errored — skip gracefully\n  if (!name || name === 'DESCONOCIDO') {\n    return [{ json: { research_task_error: 'factory_name ausente o desconocido', factory_name: 'DESCONOCIDO' } }];\n  }\n\n  const slug = f.factory_slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');\n\n  const igUrl = (f.instagram_url && f.instagram_url.startsWith('http'))\n    ? f.instagram_url\n    : ('https://www.instagram.com/' + slug);\n\n  const ttUrl = (f.tiktok_url && f.tiktok_url.startsWith('http'))\n    ? f.tiktok_url\n    : ('https://www.tiktok.com/@' + slug);\n\n  const sources = [\n    { source_type: 'bestsellers',     label: 'Colecciones / Más vendidos',     url: f.bestsellers_url },\n    { source_type: 'google_trending', label: 'Google - novedades y tendencias', url: 'https://www.google.it/search?q=' + encodeURIComponent(name + ' nuovi modelli divani 2026') },\n    { source_type: 'instagram',       label: 'Instagram perfil',                url: igUrl },\n    { source_type: 'tiktok',          label: 'TikTok perfil',                   url: ttUrl },\n    { source_type: 'google_reviews',  label: 'Google - reseñas',                url: 'https://www.google.it/search?q=' + encodeURIComponent(name + ' recensioni divani opinioni') }\n  ].filter(function(s) { return s.url && s.url.length > 10; });\n\n  return sources.map(function(s) {\n    return {\n      json: {\n        run_date: f.run_date,\n        factory_name: name,\n        factory_slug: slug,\n        trigger_type: f.trigger_type,\n        chat_id: f.chat_id,\n        from_user: f.from_user,\n        source_type: s.source_type,\n        source_label: s.label,\n        url: s.url\n      }\n    };\n  });\n} catch (e) {\n  return [{ json: { research_task_error: e.message, factory_name: $input.item.json.factory_name || 'DESCONOCIDO' } }];\n}"
+      },
+      "id": "71e76c3d-c655-4f5c-b4d6-7f85e5a6effa",
+      "name": "Construir Tareas de Investigación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "={{ ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'][Math.floor(Math.random() * 3)] }}"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "it-IT,it;q=0.9,en;q=0.8"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "d6e70d2d-8f98-45d0-bf5e-5cf0ad3c03dc",
+      "name": "Obtener Páginas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        800
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const item = $input.item.json;\n  const html = item.data || item.body || (typeof item === 'string' ? item : '');\n\n  if (!html || html.length < 200) {\n    return [{ json: { ...item, fetch_error: true, fetch_error_reason: 'RESPUESTA_VACIA_O_CORTA' } }];\n  }\n\n  const cleaned = html\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, '')\n    .replace(/<style[\\s\\S]*?<\\/style>/gi, '')\n    .replace(/<noscript[\\s\\S]*?<\\/noscript>/gi, '')\n    .replace(/<nav[\\s\\S]*?<\\/nav>/gi, '')\n    .replace(/<header[\\s\\S]*?<\\/header>/gi, '')\n    .replace(/<footer[\\s\\S]*?<\\/footer>/gi, '')\n    .replace(/<!--[\\s\\S]*?-->/g, '')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/&amp;/g, '&')\n    .replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>')\n    .replace(/\\s{2,}/g, ' ')\n    .replace(/`/g, \"'\")\n    .replace(/\\$\\{/g, '$(')\n    .trim();\n\n  const maxChars = 8000;\n\n  return [{ json: { ...item, fetch_error: false, html_for_claude: cleaned.slice(0, maxChars) } }];\n} catch (e) {\n  return [{ json: { ...$input.item.json, fetch_error: true, fetch_error_reason: e.message } }];\n}"
+      },
+      "id": "0f1cad5e-7fb2-4199-9936-242b4058afb4",
+      "name": "Preparar HTML para Claude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "no-fetch-error-flag",
+              "leftValue": "={{ $json.fetch_error }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f8ce8efb-602e-4272-b04f-af1726d351c1",
+      "name": "Filtrar Errores de Carga",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer "
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.groq_body }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "47d6e5a6-7502-4b9a-b97e-af78d31d53b6",
+      "name": "Groq: Analizar Inteligencia de Página",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2560,
+        800
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const item = $input.item.json;\n\n  const prompt = 'Eres un analista de inteligencia de mercado especializado en sofás italianos. Analiza el texto siguiente de la página web de la fábrica ' + item.factory_name + ' y devuelve ÚNICAMENTE un objeto JSON válido sin markdown ni explicaciones.\\n\\nTu tarea principal: encontrar EL sofá más vendido, más popular, o más destacado de esta fábrica. Busca el modelo que aparece primero, está marcado como bestseller, nueva colección, más popular, o más destacado. Si no encuentras un nombre específico, infiere el modelo principal basándote en el contenido.\\n\\nReglas importantes:\\n- Siempre devuelve AL MENOS 1 producto con un nombre. Nunca devuelvas products como array vacío.\\n- Si no encuentras precio, pon null. Si no encuentras material, pon null.\\n- El nombre del producto debe conservarse en su idioma original.\\n- Los demás campos de texto en español.\\n\\nEstructura JSON requerida:\\n{\\n  \"products\": [ { \"name\": string, \"model_line\": string|null, \"price_eur\": number|null, \"style\": string|null, \"materials\": string|null, \"colors\": string|null, \"is_bestseller\": boolean, \"is_new\": boolean, \"why_it_stands_out\": string|null } ],\\n  \"social\": { \"platform\": string|null, \"followers\": number|null, \"engagement_signals\": [], \"trending_content\": [], \"top_hashtags\": [], \"posting_frequency\": string|null },\\n  \"market_intel\": { \"dominant_style\": string|null, \"price_range\": string|null, \"target_audience\": string|null, \"bestselling_features\": [], \"trending_colors\": [], \"competitive_advantage\": string|null, \"customer_sentiment\": string|null, \"review_score\": number|null },\\n  \"actionable_insights\": []\\n}\\n\\nTexto a analizar:\\n' + (item.html_for_claude || '');\n\n  return [{\n    json: {\n      ...item,\n      groq_body: {\n        model: 'llama-3.3-70b-versatile',\n        max_tokens: 2000,\n        messages: [\n          {\n            role: 'user',\n            content: prompt\n          }\n        ]\n      }\n    }\n  }];\n} catch (e) {\n  return [{ json: { ...$input.item.json, groq_body_error: e.message } }];\n}"
+      },
+      "id": "86eb588f-84fb-4bac-b352-35fbdc731c59",
+      "name": "Preparar Solicitud Groq",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const resp = $input.item.json;\n\n  // Generic API error handling — works for any OpenAI-compatible response\n  if (resp.error) {\n    return [{ json: {\n      parse_error: true,\n      parse_error_reason: 'API_ERROR',\n      error_message: (resp.error.message || JSON.stringify(resp.error)),\n      products: [], marketIntel: [], socialSignals: [], actions: []\n    } }];\n  }\n\n  const codigoEstado = resp.statusCode || resp.status || null;\n  if (codigoEstado && codigoEstado >= 400) {\n    return [{ json: { parse_error: true, parse_error_reason: 'HTTP_' + codigoEstado, products: [], marketIntel: [], socialSignals: [], actions: [] } }];\n  }\n\n  // Groq / OpenAI format: choices[0].message.content\n  const textoRaw = resp.choices && resp.choices[0] && resp.choices[0].message && resp.choices[0].message.content\n    ? resp.choices[0].message.content\n    : '';\n\n  if (!textoRaw) {\n    return [{ json: { parse_error: true, parse_error_reason: 'CHOICES_ARRAY_MISSING_OR_EMPTY', products: [], marketIntel: [], socialSignals: [], actions: [] } }];\n  }\n\n  // Strip markdown code fences Groq sometimes wraps around JSON output\n  let cleaned = textoRaw.trim();\n  cleaned = cleaned.replace(/^```json\\s*/i, '').replace(/^```\\s*/, '').replace(/```\\s*$/, '').trim();\n\n  let analizado = null;\n  try {\n    analizado = JSON.parse(cleaned);\n  } catch (_) {\n    const coincidencia = cleaned.match(/\\{[\\s\\S]*\\}/);\n    if (coincidencia) {\n      try { analizado = JSON.parse(coincidencia[0]); } catch (_2) { analizado = null; }\n    }\n  }\n\n  if (!analizado || typeof analizado !== 'object') {\n    return [{ json: { parse_error: true, parse_error_reason: 'JSON_NO_INTERPRETABLE', products: [], marketIntel: [], socialSignals: [], actions: [] } }];\n  }\n\n  return [{ json: {\n    ...analizado,\n    products: analizado.products || [],\n    marketIntel: analizado.marketIntel || [],\n    socialSignals: analizado.socialSignals || [],\n    actions: analizado.actions || [],\n    parse_error: false\n  } }];\n} catch (e) {\n  return [{ json: { parse_error: true, parse_error_reason: e.message, products: [], marketIntel: [], socialSignals: [], actions: [] } }];\n}"
+      },
+      "id": "619fa37b-8ed6-4f81-b7a0-3a2a70962c43",
+      "name": "Extraer Inteligencia de Groq",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2736,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const intel = $input.item.json;\n  // Use the factory name from the 'Construir Tareas' node if the current input is missing it\n  const fallbackName = $('Construir Tareas de Investigación').item.json.factory_name;\n  const factoryName = intel.factory_name || fallbackName || 'DESCONOCIDO';\n\n  if (intel.source_type === 'snapshot_cache') return [{ json: intel }];\n\n  const fuente = $('Preparar HTML para Claude').item.json;\n\n  return [{ json: {\n    run_date: fuente.run_date || intel.run_date || new Date().toISOString(),\n    factory_name: factoryName,\n    factory_slug: fuente.factory_slug || intel.factory_slug || '',\n    source_type: fuente.source_type || intel.source_type || '',\n    url: fuente.url || intel.url || '',\n    products: intel.products || [],\n    social: intel.social || {},\n    market_intel: intel.market_intel || {},\n    actionable_insights: intel.actionable_insights || [],\n    _omitido: !!(intel.parse_error || intel.fetch_error),\n    _motivo_omision: intel.parse_error_reason || intel.fetch_error_reason || null\n  } }];\n} catch (e) {\n  return [{ json: { factory_name: 'ERROR_LOGIC', error: e.message } }];\n}"
+      },
+      "id": "c1ef6666-f811-426c-85cc-3d823ee044d1",
+      "name": "Adjuntar Contexto de Fábrica",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "17b7408f-d10c-41b4-b65f-979b9a412cf3",
+      "name": "Agregar Toda la Inteligencia",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2864,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const data = $input.item.json.data || [];\n  const byFactory = new Map();\n\n  for (const row of data) {\n    const key = row.factory_name || 'DESCONOCIDO';\n    if (!byFactory.has(key)) {\n      byFactory.set(key, { factory_name: key, sources: [], products: [], socialSignals: [], marketIntel: [], actions: [] });\n    }\n    const f = byFactory.get(key);\n    f.sources.push(row);\n    (row.products || []).forEach(function(p) { f.products.push(Object.assign({}, p, { source_type: row.source_type })); });\n    if (row.social && Object.keys(row.social).length > 0) f.socialSignals.push(row.social);\n    if (row.market_intel && Object.keys(row.market_intel).length > 0) f.marketIntel.push(row.market_intel);\n    (row.actionable_insights || []).forEach(function(a) { f.actions.push(a); });\n  }\n\n  const factories = [];\n\n  for (const entry of byFactory.entries()) {\n    const f = entry[1];\n    const allFresh = f.sources.length > 0 && f.sources.every(function(s) { return s.source_type === 'snapshot_cache'; });\n\n    let commercial = 0;\n    let social = 0;\n    let bestsellerCount = 0;\n    let newCount = 0;\n    let reviewScoreSum = 0;\n    let reviewScoreCount = 0;\n    let positiveSentimentHits = 0;\n\n    for (const p of f.products) {\n      if (p.is_bestseller) bestsellerCount += 1;\n      if (p.is_new) newCount += 1;\n    }\n\n    for (const mi of f.marketIntel) {\n      if (typeof mi.review_score === 'number' && mi.review_score > 0) {\n        reviewScoreSum += mi.review_score;\n        reviewScoreCount += 1;\n      }\n      const sentiment = (mi.customer_sentiment || '').toLowerCase();\n      if (sentiment.includes('positivo') || sentiment.includes('positive') || sentiment.includes('buono') || sentiment.includes('good')) {\n        positiveSentimentHits += 1;\n      }\n    }\n\n    const avgReview = reviewScoreCount > 0 ? reviewScoreSum / reviewScoreCount : 0;\n    commercial += Math.min(bestsellerCount * 15, 30);\n    commercial += Math.min(newCount * 5, 15);\n    commercial += avgReview * 8;\n    if (positiveSentimentHits > 0) commercial += 20;\n    if (f.products.length > 0) commercial += 15;\n    commercial = Math.min(100, Math.round(commercial * 10) / 10);\n\n    let followersTotal = 0;\n    let platformsActive = 0;\n    let engagementBonus = 0;\n\n    for (const s of f.socialSignals) {\n      followersTotal += (s.followers || 0);\n      if (s.platform) platformsActive += 1;\n      if ((s.engagement_signals || []).length > 0) engagementBonus = 20;\n    }\n\n    social += Math.min(followersTotal / 10000, 30);\n    social += Math.min(platformsActive * 10, 30);\n    social += engagementBonus;\n    social += Math.min((f.actions || []).length * 4, 20);\n    social = Math.min(100, Math.round(social * 10) / 10);\n\n    const overall = Math.round((commercial * 0.6 + social * 0.4) * 10) / 10;\n\n    factories.push({\n      factory_name: f.factory_name,\n      _all_fresh: allFresh,\n      commercial_score: commercial,\n      social_score: social,\n      overall_score: overall,\n      products: f.products,\n      marketIntel: f.marketIntel,\n      socialSignals: f.socialSignals,\n      actions: f.actions\n    });\n  }\n\n  const byCommercial = factories.slice().sort(function(a, b) { return b.commercial_score - a.commercial_score; });\n  const mostSold = byCommercial.map(function(f, idx) { return Object.assign({}, f, { commercial_rank: idx + 1 }); });\n\n  const bySocial = factories.slice().sort(function(a, b) { return b.social_score - a.social_score; });\n  const mostInfluential = bySocial.map(function(f, idx) { return Object.assign({}, f, { social_rank: idx + 1 }); });\n\n  factories.sort(function(a, b) { return b.overall_score - a.overall_score; });\n\n  return [{ json: { factories: factories, most_sold: mostSold, most_influential: mostInfluential } }];\n} catch (e) {\n  return [{ json: { factories: [], most_sold: [], most_influential: [], score_error: e.message } }];\n}"
+      },
+      "id": "9b6e335c-9f81-4617-b2d5-c2fcadb63c27",
+      "name": "Puntuar y Clasificar Fábricas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3168,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  // Read and write snapshot via workflow static data — no fs module needed\n  const staticData = $getWorkflowStaticData('global');\n  if (!staticData.snapshots) staticData.snapshots = {};\n  const snapshots = staticData.snapshots;\n\n  const d = $input.item.json;\n  const factories = d.factories || [];\n  const now = new Date().toISOString();\n  const skippedFactories = [];\n  const processedFactories = [];\n\n  for (const factory of factories) {\n    const name = factory.factory_name;\n\n    // Fresh factory served from cache — include in report with cached products, all marked as known\n    if (factory._all_fresh) {\n      skippedFactories.push(name);\n      const snap = snapshots[name] || {};\n      const cachedProducts = (snap.products || []).map(function(p) {\n        return Object.assign({}, p, { _is_new_this_week: false });\n      });\n      processedFactories.push(Object.assign({}, factory, { products: cachedProducts, new_count: 0 }));\n      continue;\n    }\n\n    const snap = snapshots[name] || {};\n    const knownNames = new Set(\n      (snap.products || []).map(function(p) { return (p.name || '').toLowerCase().trim(); }).filter(Boolean)\n    );\n\n    // Tag every product — new ones get _is_new_this_week: true\n    const taggedProducts = (factory.products || []).map(function(p) {\n      const n = (p.name || '').toLowerCase().trim();\n      return Object.assign({}, p, { _is_new_this_week: !!(n && !knownNames.has(n)) });\n    });\n\n    const newCount = taggedProducts.filter(function(p) { return p._is_new_this_week; }).length;\n\n    // Update snapshot with latest scraped data\n    snapshots[name] = {\n      last_scraped: now,\n      products: factory.products || [],\n      social: (factory.socialSignals || [])[0] || snap.social || {},\n      market_intel: (factory.marketIntel || [])[0] || snap.market_intel || {},\n      actionable_insights: factory.actions || snap.actionable_insights || []\n    };\n\n    processedFactories.push(Object.assign({}, factory, { products: taggedProducts, new_count: newCount }));\n  }\n\n  // Persist — static data is automatically saved by n8n\n  staticData.snapshots = snapshots;\n\n  const byCommercial = processedFactories.slice().sort(function(a, b) { return b.commercial_score - a.commercial_score; });\n  const mostSold = byCommercial.map(function(f, i) { return Object.assign({}, f, { commercial_rank: i + 1 }); });\n  const bySocial = processedFactories.slice().sort(function(a, b) { return b.social_score - a.social_score; });\n  const mostInfluential = bySocial.map(function(f, i) { return Object.assign({}, f, { social_rank: i + 1 }); });\n\n  return [{ json: {\n    factories: processedFactories,\n    most_sold: mostSold,\n    most_influential: mostInfluential,\n    skipped_factories: skippedFactories\n  } }];\n} catch (e) {\n  return [{ json: {\n    factories: [], most_sold: [], most_influential: [],\n    skipped_factories: [], detect_error: e.message\n  } }];\n}"
+      },
+      "id": "3acd2da3-4c78-43e4-bc9d-0f1bce69e755",
+      "name": "Detectar Productos Nuevos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3456,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const d = $input.item.json;\n  const factories = d.most_sold || [];\n  const now = new Date();\n  const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];\n  const runDateEs = now.getDate() + ' de ' + meses[now.getMonth()] + ' de ' + now.getFullYear();\n\n  const nf = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 });\n  const fmt = function(val) { return (!val || isNaN(Number(val))) ? '' : nf.format(val) + '\\u00a0€'; };\n\n  let msg = '<b>🛋 Ranking de Sofás Más Vendidos por Fábrica</b>\\n';\n  msg += '📅 <i>' + runDateEs + '</i>\\n\\n';\n\n  if (factories.length === 0) {\n    msg += '⚠️ No se obtuvieron datos esta ejecución.';\n  } else {\n    factories.forEach(function(f, i) {\n      const prods = f.products || [];\n      const top = prods[0];\n      const rank = i + 1;\n\n      let line = rank + '. <b>' + f.factory_name + '</b>';\n\n      if (top && top.name) {\n        const parts = [];\n        parts.push(top.name + (top._is_new_this_week ? ' 🆕' : ''));\n        if (top.materials) parts.push(top.materials);\n        const price = fmt(top.price_eur);\n        if (price) parts.push('💶 ' + price);\n        line += ' — ' + parts.join(' · ');\n      } else {\n        line += ' — <i>Sin datos</i>';\n      }\n\n      msg += line + '\\n';\n    });\n  }\n\n  const maxLen = 3800;\n  const chunks = [];\n  if (msg.length <= maxLen) {\n    chunks.push(msg);\n  } else {\n    const lines = msg.split('\\n');\n    let current = '';\n    for (const line of lines) {\n      if ((current + line + '\\n').length > maxLen) {\n        chunks.push(current);\n        current = line + '\\n';\n      } else {\n        current += line + '\\n';\n      }\n    }\n    if (current) chunks.push(current);\n  }\n\n  return [{ json: { telegram_chunks: chunks } }];\n\n} catch (e) {\n  return [{ json: { telegram_chunks: ['❌ <b>Error al generar el informe:</b> ' + e.message] } }];\n}"
+      },
+      "id": "45f6d556-758c-4b87-96e0-18d2f7d865a4",
+      "name": "Construir Informe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3744,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const d = $('Construir Informe').item.json;\n  const chunks = d.telegram_chunks || [];\n  if (chunks.length === 0) {\n    return [{ json: { chunk_index: 0, text: '⚠️ <b>El informe no generó contenido.</b> Revisa los registros del workflow.' } }];\n  }\n  return chunks.map(function(c, i) { return { json: { chunk_index: i, text: c } }; });\n} catch (e) {\n  return [{ json: { chunk_index: 0, text: '❌ <b>Error al preparar el mensaje:</b> ' + e.message } }];\n}"
+      },
+      "id": "80d6f832-859c-46e2-9151-f884807d1931",
+      "name": "Preparar Mensaje Final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4032,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Disparador Telegram').item.json.message.chat.id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "4d26ec30-fdd0-4038-af01-ac4bca8110c8",
+      "name": "Enviar Informe Final",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4320,
+        800
+      ],
+      "webhookId": "c36b1361-0dc0-4df6-a4c0-67b0653c06c6",
+      "credentials": {
+        "telegramApi": {
+          "id": "hlhjTnoai3asEJ7f",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Disparador Telegram": {
+      "main": [
+        [
+          {
+            "node": "Analizar Mensaje Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Disparador Programación Semanal": {
+      "main": [
+        [
+          {
+            "node": "Configurar Valores Predeterminados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analizar Mensaje Telegram": {
+      "main": [
+        [
+          {
+            "node": "¿Es Disparador Válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configurar Valores Predeterminados": {
+      "main": [
+        [
+          {
+            "node": "¿Es Disparador Válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Es Disparador Válido?": {
+      "main": [
+        [
+          {
+            "node": "Enviar Confirmación",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar Respuesta No Reconocida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Confirmación": {
+      "main": [
+        [
+          {
+            "node": "Construir Lista de Fábricas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Lista de Fábricas": {
+      "main": [
+        [
+          {
+            "node": "Procesar Cada Fábrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar Cada Fábrica": {
+      "main": [
+        [
+          {
+            "node": "Agregar Toda la Inteligencia",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "¿Saltear Fábrica?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Saltear Fábrica?": {
+      "main": [
+        [
+          {
+            "node": "Límite de Velocidad — 10s Entre Fábricas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Crear Item Saltado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear Item Saltado": {
+      "main": [
+        [
+          {
+            "node": "Adjuntar Contexto de Fábrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Límite de Velocidad — 10s Entre Fábricas": {
+      "main": [
+        [
+          {
+            "node": "Construir Tareas de Investigación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Tareas de Investigación": {
+      "main": [
+        [
+          {
+            "node": "Obtener Páginas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Páginas": {
+      "main": [
+        [
+          {
+            "node": "Preparar HTML para Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar HTML para Claude": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Errores de Carga",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Errores de Carga": {
+      "main": [
+        [
+          {
+            "node": "Preparar Solicitud Groq",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Adjuntar Contexto de Fábrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq: Analizar Inteligencia de Página": {
+      "main": [
+        [
+          {
+            "node": "Extraer Inteligencia de Groq",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Solicitud Groq": {
+      "main": [
+        [
+          {
+            "node": "Groq: Analizar Inteligencia de Página",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Inteligencia de Groq": {
+      "main": [
+        [
+          {
+            "node": "Adjuntar Contexto de Fábrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adjuntar Contexto de Fábrica": {
+      "main": [
+        [
+          {
+            "node": "Procesar Cada Fábrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agregar Toda la Inteligencia": {
+      "main": [
+        [
+          {
+            "node": "Puntuar y Clasificar Fábricas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Puntuar y Clasificar Fábricas": {
+      "main": [
+        [
+          {
+            "node": "Detectar Productos Nuevos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detectar Productos Nuevos": {
+      "main": [
+        [
+          {
+            "node": "Construir Informe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Informe": {
+      "main": [
+        [
+          {
+            "node": "Preparar Mensaje Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Mensaje Final": {
+      "main": [
+        [
+          {
+            "node": "Enviar Informe Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "93f6390a64a76b35b2a4d4daf192c1cc48f882e9437a064012745e8a24ee163b"
+  }
+
